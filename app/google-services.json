@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "67881752938",
+    "project_id": "lista-de-compra-8ad1e",
+    "storage_bucket": "lista-de-compra-8ad1e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:67881752938:android:e5e5c07cd4c15ac8e3ed13",
+        "android_client_info": {
+          "package_name": "org.insbaixcamp.lista_compra"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUUAo_j_gguGHaREFb3ZTlwQoTAWsEzhU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
