@@ -5,92 +5,97 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewScreenSizes
-import com.google.firebase.Firebase
-import com.google.firebase.analytics.FirebaseAnalytics
-import com.google.firebase.analytics.analytics
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import org.insbaixcamp.lista_compra.ui.theme.Lista_compraTheme
 
 class MainActivity : ComponentActivity() {
-    private lateinit var analytics: FirebaseAnalytics
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        analytics = Firebase.analytics
         enableEdgeToEdge()
+
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val startDestination = if (currentUser != null) "home" else "login"
+
+        // Ila kan mdkhel o ma-3ndouch document f "users", creeh
+        currentUser?.let { user ->
+            val ref = FirebaseFirestore.getInstance().collection("users").document(user.uid)
+            ref.get().addOnSuccessListener { doc ->
+                if (!doc.exists()) {
+                    val email = (user.email ?: "").lowercase()
+                    ref.set(
+                        User(
+                            uid = user.uid,
+                            name = email.substringBefore("@"),
+                            email = email
+                        )
+                    )
+                }
+            }
+        }
+
         setContent {
             Lista_compraTheme {
-                Lista_compraApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+
+                    NavHost(navController = navController, startDestination = startDestination) {
+                        composable("login") {
+                            LoginScreen(
+                                onLoginSuccess = {
+                                    navController.navigate("home") {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                },
+                                onGoToSignUp = { navController.navigate("signup") }
+                            )
+                        }
+                        composable("signup") {
+                            SignUpScreen(
+                                onSignUpSuccess = {
+                                    navController.navigate("home") {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                },
+                                onGoToLogin = { navController.popBackStack() }
+                            )
+                        }
+                        composable("home") {
+                            HomeScreen(
+                                onListClick = { listId ->
+                                    navController.navigate("detail/$listId")
+                                },
+                                onLogout = {
+                                    navController.navigate("login") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+                        composable(
+                            route = "detail/{listId}",
+                            arguments = listOf(navArgument("listId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val listId = backStackEntry.arguments?.getString("listId") ?: ""
+                            ListDetailScreen(
+                                listId = listId,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                    }
+                }
             }
         }
-    }
-}
-
-@PreviewScreenSizes
-@Composable
-fun Lista_compraApp() {
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-
-    NavigationSuiteScaffold(
-        navigationSuiteItems = {
-            AppDestinations.entries.forEach {
-                item(
-                    icon = {
-                        Icon(
-                            painterResource(it.icon),
-                            contentDescription = it.label
-                        )
-                    },
-                    label = { Text(it.label) },
-                    selected = it == currentDestination,
-                    onClick = { currentDestination = it }
-                )
-            }
-        }
-    ) {
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-            Greeting(
-                name = "Android",
-                modifier = Modifier.padding(innerPadding)
-            )
-        }
-    }
-}
-
-enum class AppDestinations(
-    val label: String,
-    val icon: Int,
-) {
-    HOME("Home", R.drawable.ic_home),
-    FAVORITES("Favorites", R.drawable.ic_favorite),
-    PROFILE("Profile", R.drawable.ic_account_box),
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    Lista_compraTheme {
-        Greeting("Android")
     }
 }
