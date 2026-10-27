@@ -14,22 +14,25 @@ class ListViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
-    // State li kay-7tafeḍ b-ga3 l-listat dyal l-user f Realtime
+    // Llistes de l'usuari (accés propi o compartit), actualitzades en temps real
     var userLists by mutableStateOf<List<Lista>>(emptyList())
+        private set
+
+    // Passa a true quan arriba el primer snapshot (així sabem si una llista
+    // ha estat eliminada o si encara s'està carregant)
+    var loaded by mutableStateOf(false)
         private set
 
     private var listenerRegistration: ListenerRegistration? = null
 
     init {
-        // Mnin kay-t-crea ListViewModel, kay-bda y-qra l-listat auto
         listenToUserLists()
     }
 
-    // 1. REALTIME LISTENER: Kat-qra ga3 l-listat li l-user member fihom f Realtime
+    // ---------- ESCOLTA EN TEMPS REAL ----------
     fun listenToUserLists() {
         val currentUserId = auth.currentUser?.uid ?: return
-
-        // Mssah l-listener l-qdim ila kan kayn
+        // Eliminem l'escoltador anterior si n'hi havia
         listenerRegistration?.remove()
 
         listenerRegistration = db.collection("lists")
@@ -39,48 +42,28 @@ class ListViewModel : ViewModel() {
                     println("Error listening to lists: ${error.message}")
                     return@addSnapshotListener
                 }
-
                 if (snapshot != null) {
-                    val lists = snapshot.toObjects(Lista::class.java)
-                    userLists = lists
+                    userLists = snapshot.toObjects(Lista::class.java)
+                        .sortedBy { it.name.lowercase() }
+                    loaded = true
                 }
             }
     }
 
-    // 2. ADD PRODUCT
-    fun addProduct(list: Lista, name: String, category: String) {
-        val newProduct = Product(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            category = category,
-            checked = false
-        )
-
-        val updatedProduct = list.products + newProduct
-        val updatedList = list.copy(products = updatedProduct)
-
-        db.collection("lists").document(list.id).set(updatedList)
-    }
-
-    // 3. REMOVE PRODUCT
-    fun removeProduct(list: Lista, productId: String) {
-        val updatedProduct = list.products.filter { it.id != productId }
-        val updatedList = list.copy(products = updatedProduct)
-
-        db.collection("lists").document(list.id).set(updatedList)
-    }
-
-    // 4. TOGGLE PRODUCT (CHECK / UNCHECK)
-    fun toggleProduct(list: Lista, productId: String) {
-        val updatedProducts = list.products.map { product ->
-            if (product.id == productId) product.toggle() else product
+    // ---------- FUNCIÓ AUXILIAR: actualització amb transacció ----------
+    // Llegeix la llista actual de Firestore, hi aplica el canvi i la desa.
+    // Així evitem que dos usuaris es sobreescriguin els canvis mútuament.
+    private fun updateList(listId: String, transform: (Lista) -> Lista) {
+        val ref = db.collection("lists").document(listId)
+        db.runTransaction<Any?> { tx ->
+            val current = tx.get(ref).toObject(Lista::class.java)
+                ?: return@runTransaction null
+            tx.set(ref, transform(current))
+            null
         }
-        val updatedList = list.copy(products = updatedProducts)
-
-        db.collection("lists").document(list.id).set(updatedList)
     }
 
-    // 5. CREATE LIST
+    // ---------- LLISTES ----------
     fun createList(name: String) {
         val currentUserId = auth.currentUser?.uid ?: return
         val listId = db.collection("lists").document().id
@@ -89,29 +72,92 @@ class ListViewModel : ViewModel() {
             id = listId,
             name = name,
             ownerId = currentUserId,
-            members = listOf(currentUserId)
+            members = listOf(currentUserId),
+            categories = DEFAULT_CATEGORIES.map {
+                Category(id = UUID.randomUUID().toString(), name = it)
+            }
         )
-
         db.collection("lists").document(listId).set(newList)
     }
 
-    // 6. DELETE LIST
+    fun renameList(listId: String, newName: String) =
+        updateList(listId) { it.copy(name = newName) }
+
+    // Només el propietari pot eliminar la llista
     fun deleteList(list: Lista) {
+        val uid = auth.currentUser?.uid ?: return
+        if (list.ownerId != uid) return
         db.collection("lists").document(list.id).delete()
     }
 
-    // 7. SHARE LIST (Zid user akhor b email aw UID f members)
-    fun addMemberToList(list: Lista, newMemberUserId: String) {
-        if (!list.members.contains(newMemberUserId)) {
-            val updatedMembers = list.members + newMemberUserId
-            val updatedList = list.copy(members = updatedMembers)
-            db.collection("lists").document(list.id).set(updatedList)
+    // Compartir: afegeix l'UID d'un altre usuari als membres de la llista
+    fun addMemberToList(listId: String, newMemberUserId: String) =
+        updateList(listId) { l ->
+            if (l.members.contains(newMemberUserId)) l
+            else l.copy(members = l.members + newMemberUserId)
+        }
+
+    // ---------- CATEGORIES ----------
+    fun addCategory(listId: String, name: String) {
+        if (name.isBlank()) return
+        updateList(listId) { l ->
+            l.copy(categories = l.categories + Category(UUID.randomUUID().toString(), name.trim()))
         }
     }
 
+    fun renameCategory(listId: String, categoryId: String, newName: String) {
+        if (newName.isBlank()) return
+        updateList(listId) { l ->
+            l.copy(categories = l.categories.map {
+                if (it.id == categoryId) it.copy(name = newName.trim()) else it
+            })
+        }
+    }
+
+    // Només s'elimina si la categoria no conté cap producte
+    fun deleteCategory(listId: String, categoryId: String) =
+        updateList(listId) { l ->
+            if (l.products.any { it.categoryId == categoryId }) l
+            else l.copy(categories = l.categories.filter { it.id != categoryId })
+        }
+
+    // ---------- PRODUCTES ----------
+    fun addProduct(listId: String, name: String, categoryId: String) {
+        if (name.isBlank()) return
+        val newProduct = Product(
+            id = UUID.randomUUID().toString(),
+            name = name.trim(),
+            categoryId = categoryId,
+            checked = false
+        )
+        updateList(listId) { l -> l.copy(products = l.products + newProduct) }
+    }
+
+    fun editProduct(listId: String, productId: String, name: String, categoryId: String) {
+        if (name.isBlank()) return
+        updateList(listId) { l ->
+            l.copy(products = l.products.map {
+                if (it.id == productId) it.copy(name = name.trim(), categoryId = categoryId) else it
+            })
+        }
+    }
+
+    // Marca o desmarca un producte com a completat (sense eliminar-lo)
+    fun toggleProduct(listId: String, productId: String) =
+        updateList(listId) { l ->
+            l.copy(products = l.products.map {
+                if (it.id == productId) it.toggle() else it
+            })
+        }
+
+    fun removeProduct(listId: String, productId: String) =
+        updateList(listId) { l ->
+            l.copy(products = l.products.filter { it.id != productId })
+        }
+
     override fun onCleared() {
         super.onCleared()
-        // Nddfo l-listener mnin l-ViewModel y-t-mssah
+        // Alliberem l'escoltador quan el ViewModel es destrueix
         listenerRegistration?.remove()
     }
 }

@@ -43,7 +43,7 @@ class AuthViewModel : ViewModel() {
             }
     }
 
-    // Ila l-user ma-3ndouch document f "users", kan-creeh
+    // Si l'usuari no té document a la col·lecció "users", el creem
     private fun ensureUserDocument() {
         val user = auth.currentUser ?: return
         val ref = firestore.collection("users").document(user.uid)

@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
         val currentUser = FirebaseAuth.getInstance().currentUser
         val startDestination = if (currentUser != null) "home" else "login"
 
-        // Ila kan mdkhel o ma-3ndouch document f "users", creeh
+        // Si l'usuari ja té la sessió iniciada però no té document a "users", el creem
         currentUser?.let { user ->
             val ref = FirebaseFirestore.getInstance().collection("users").document(user.uid)
             ref.get().addOnSuccessListener { doc ->

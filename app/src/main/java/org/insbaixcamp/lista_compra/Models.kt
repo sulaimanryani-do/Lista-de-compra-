@@ -1,9 +1,14 @@
 package org.insbaixcamp.lista_compra
 
+data class Category(
+    val id: String = "",
+    val name: String = ""
+)
+
 data class Product(
     val id: String = "",
     val name: String = "",
-    val category: String = "",
+    val categoryId: String = "",
     val checked: Boolean = false
 ) {
     fun toggle(): Product = copy(checked = !checked)
@@ -19,8 +24,7 @@ data class Lista(
     val id: String = "",
     val name: String = "",
     val ownerId: String = "",
-    val products: List<Product> = emptyList(),
-    val members: List<String> = emptyList()
-) {
-    fun addProduct(product: Product): Lista = copy(products = products + product)
-}
+    val members: List<String> = emptyList(),
+    val categories: List<Category> = emptyList(),
+    val products: List<Product> = emptyList()
+)
