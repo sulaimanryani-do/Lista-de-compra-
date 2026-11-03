@@ -29,3 +29,6 @@ Para ejecutar el proyecto localmente en tu entorno de desarrollo:
 1. **Clonar el repositorio:**
    ```bash
    git clone [https://github.com/sulaimanryani-do/Lista-de-compra-.git](https://github.com/sulaimanryani-do/Lista-de-compra-.git)
+
+   Idioma
+   Español 
